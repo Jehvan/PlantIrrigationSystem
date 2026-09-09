@@ -1,8 +1,9 @@
+import os
 from flask import Flask, request, render_template, flash, redirect, url_for, jsonify
 from db_model import db, User
 from datetime import datetime
 app = Flask(__name__)
-app.secret_key = 'HSAD3294HSHDAPAF12DSAWO'
+app.secret_key = os.environ.get('SECRET_KEY', 'change-me-in-production')
 
 # Configure DB
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
