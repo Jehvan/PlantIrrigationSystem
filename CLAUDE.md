@@ -2,9 +2,12 @@
 
 ## What This Project Is
 
-A simple web dashboard for an automated plant irrigation system. The ESP32 microcontroller reads sensors and POSTs the data to this Flask server. The dashboard displays live sensor readings and allows manual pump control.
+An automated plant irrigation system that runs entirely on an **ESP32 microcontroller**. The ESP32 reads sensors, applies irrigation logic, and serves a web dashboard over WiFi — no separate server needed.
 
-No authentication, no database — intentionally kept simple so the ESP32 can talk to it directly over the local network.
+## Stack
+
+- **MicroPython** — runs on the ESP32
+- **Microdot** — lightweight Flask-like web framework for MicroPython (must be uploaded to the ESP32 alongside these files)
 
 ---
 
@@ -12,22 +15,55 @@ No authentication, no database — intentionally kept simple so the ESP32 can ta
 
 ```
 PlantIrrigationSystem/
-├── app.py              # Flask app — all routes live here
-├── templates/
-│   └── index.html      # Dashboard (sensor readings + pump control)
-└── static/
-    └── css/            # (empty for now, dashboard styles are inline)
+├── main.py              # Entry point: WiFi connection, web server, sensor reading, irrigation logic
+├── index.html           # Dashboard — served directly by the ESP32
+├── secrets.py           # WiFi credentials (gitignored — copy from secrets.example.py)
+├── secrets.example.py   # Template for secrets.py
+└── CLAUDE.md
 ```
 
 ---
 
-## How to Run
+## How to Deploy
 
-```bash
-pip install flask
-python app.py
-# Server runs at http://0.0.0.0:5000
+1. Install [Microdot](https://github.com/miguelgrinberg/microdot) — download `microdot.py` from the repo
+2. Copy `secrets.example.py` to `secrets.py` and fill in your WiFi credentials
+3. Flash MicroPython firmware to the ESP32 if not already done
+4. Upload all files to the ESP32 (`main.py`, `index.html`, `microdot.py`, `secrets.py`)
+5. The ESP32 will connect to WiFi on boot and print its IP address — open that in a browser
+
+---
+
+## Sensors & Pins
+
+Defined at the top of `main.py` — adjust to match your wiring:
+
+| Variable | Default Pin | Purpose |
+|----------|-------------|---------|
+| `moisture_adc` | GPIO 34 | Soil moisture sensor (analog) |
+| `light_adc` | GPIO 35 | Light sensor / LDR (analog) |
+| `pump_pin` | GPIO 26 | Pump relay (digital output) |
+
+---
+
+## Irrigation Logic
+
+**Water the plant ONLY when BOTH are true:**
+- Soil moisture raw ADC reading is **below `MOISTURE_THRESHOLD`** (soil is dry)
+- Light sensor raw ADC reading is **below `LIGHT_THRESHOLD`** (it is dark — no daylight)
+
+**Do NOT water if either is false** — moisture is sufficient, or it's daytime.
+
+```python
+if moisture < MOISTURE_THRESHOLD and light < LIGHT_THRESHOLD:
+    pump_on()
+else:
+    pump_off()
 ```
+
+Thresholds are defined in `main.py` and need to be tuned after testing with the actual sensors.
+
+The irrigation check runs automatically every 60 seconds in a background async loop.
 
 ---
 
@@ -35,50 +71,24 @@ python app.py
 
 | Method | URL | Description |
 |--------|-----|-------------|
-| GET | `/` | Serves the dashboard |
-| POST | `/toggle-pump` | Toggles pump ON/OFF, returns `{"status": "ON"}` or `{"status": "OFF"}` |
+| GET | `/` | Serves the dashboard HTML |
+| GET | `/sensor-data` | Returns `{moisture, light, pump}` as JSON |
+| POST | `/toggle-pump` | Manually toggles pump, locks into manual mode |
+| POST | `/auto-mode` | Clears manual override, returns to automatic logic |
 
 ---
 
 ## Dashboard (index.html)
 
-Displays a 2-column grid with six tiles:
-- **Moisture Level** — hardcoded placeholder (`45%`)
-- **Time Since Last Irrigation** — hardcoded placeholder (`02:15:30`)
-- **Temperature** — hardcoded placeholder (`23°C`)
-- **Humidity** — hardcoded placeholder (`55%`)
-- **Water Pump Status** — live, updated via JS fetch to `/toggle-pump`
-- **Current Time & Date** — live, updated every second via JS
+- Polls `/sensor-data` every 5 seconds to update moisture, light, and pump status tiles
+- **Toggle Pump** button — manually overrides the pump
+- **Return to Auto** button — clears manual override and hands control back to the irrigation logic
+- Clock updates every second via JS
 
 ---
 
-## ESP32 Integration — What Needs to Be Built
+## Known TODOs
 
-### The ESP32's job
-The ESP32 reads two sensors and sends the data to this Flask server:
-1. **Soil moisture sensor** — soil moisture level
-2. **Light sensor (LDR or similar)** — detects daylight vs. darkness
-
-### Irrigation logic
-**Water the plant ONLY when BOTH are true:**
-- Soil moisture is **below a threshold** (soil is dry)
-- **No daylight** detected (it is dark / nighttime)
-
-**Do NOT water if either condition is false** — moisture is fine, or it's daytime (watering in sunlight wastes water and can scorch leaves).
-
-```
-if moisture < MOISTURE_THRESHOLD and light_level < LIGHT_THRESHOLD:
-    turn_pump_on()
-else:
-    turn_pump_off()
-```
-
-### What still needs to be added to Flask
-
-1. **POST `/sensor-data`** — ESP32 POSTs sensor readings here on a regular interval (moisture, light level, temperature, humidity).
-2. **GET `/sensor-data`** — dashboard polls this to fetch the latest readings and update the tiles in real time (replacing the hardcoded placeholders).
-3. **GET `/pump-command`** — ESP32 polls this to know whether to activate the physical relay. Server applies the irrigation logic and returns `ON` or `OFF`.
-
-### What still needs to be updated in the dashboard
-
-Replace the hardcoded tile values with a `setInterval` fetch to `/sensor-data` (same pattern as the clock already does).
+- Thresholds (`MOISTURE_THRESHOLD`, `LIGHT_THRESHOLD`) need calibration with real sensors
+- Temperature and humidity tiles were removed (would need a DHT11/DHT22 sensor — add if available)
+- No persistent logging of irrigation events

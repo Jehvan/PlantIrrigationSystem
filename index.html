@@ -5,18 +5,16 @@
     <title>Irrigation Dashboard</title>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
     <style>
-        /* Body fills screen and centers everything */
         body {
             display: flex;
-            justify-content: center; /* horizontal centering */
-            align-items: center;     /* vertical centering */
+            justify-content: center;
+            align-items: center;
             min-height: 100vh;
             margin: 0;
             font-family: 'Roboto', sans-serif;
             background-color: #f4f6f9;
         }
 
-        /* Container for dashboard */
         .dashboard-container {
             display: flex;
             flex-direction: column;
@@ -25,12 +23,6 @@
             width: 90%;
             max-width: 900px;
             gap: 20px;
-        }
-
-        .greeting {
-            font-size: 24px;
-            font-weight: 500;
-            margin-bottom: 20px;
         }
 
         .grid-container {
@@ -49,7 +41,7 @@
             display: flex;
             flex-direction: column;
             justify-content: center;
-            align-items: center; /* center content inside each cell */
+            align-items: center;
             text-align: center;
         }
 
@@ -65,80 +57,90 @@
             font-weight: 700;
         }
 
-        .pump-button {
+        .button-row {
+            display: flex;
+            gap: 15px;
             margin-top: 30px;
+        }
+
+        button {
             padding: 15px 25px;
             font-size: 18px;
-            background-color: #4a90e2;
-            color: white;
             border: none;
             border-radius: 10px;
             cursor: pointer;
             transition: background-color 0.3s;
+            color: white;
         }
 
-        .pump-button:hover {
-            background-color: #357ab7;
-        }
+        #pump-btn    { background-color: #4a90e2; }
+        #pump-btn:hover { background-color: #357ab7; }
+
+        #auto-btn    { background-color: #7cb87c; }
+        #auto-btn:hover { background-color: #5a9e5a; }
     </style>
 </head>
 <body>
 <div class="dashboard-container">
-    <!-- Data Grid -->
     <div class="grid-container">
         <div class="grid-item">
             <h3>Moisture Level</h3>
-            <p id="moisture">45%</p>
+            <p id="moisture">--</p>
         </div>
         <div class="grid-item">
-            <h3>Time Since Last Irrigation</h3>
-            <p id="last-irrigation">02:15:30</p>
-        </div>
-        <div class="grid-item">
-            <h3>Temperature</h3>
-            <p id="temperature">23°C</p>
-        </div>
-        <div class="grid-item">
-            <h3>Humidity</h3>
-            <p id="humidity">55%</p>
+            <h3>Light Level</h3>
+            <p id="light">--</p>
         </div>
         <div class="grid-item">
             <h3>Water Pump Status</h3>
-            <p id="pump-status">OFF</p>
+            <p id="pump-status">--</p>
         </div>
         <div class="grid-item">
-            <h3>Current Time & Date</h3>
-            <p id="current-time">{{ current_time }}</p>
+            <h3>Current Time</h3>
+            <p id="current-time">--</p>
         </div>
     </div>
 
-    <!-- Manual Pump Control -->
-    <button type="button" class="pump-button" onclick="togglePump()">Turn On Pump</button>
+    <div class="button-row">
+        <button id="pump-btn" onclick="togglePump()">Toggle Pump</button>
+        <button id="auto-btn" onclick="setAutoMode()">Return to Auto</button>
+    </div>
 </div>
 
 <script>
-    // Pump toggle function
     function togglePump() {
-        fetch('/toggle-pump', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            }
-        })
-        .then(response => response.json())
-        .then(data => {
-            const status = data.status;
-            document.getElementById('pump-status').innerText = status;
-            document.querySelector('.pump-button').innerText = status === 'ON' ? 'Turn Off Pump' : 'Turn On Pump';
-        })
-        .catch(err => console.error(err));
+        fetch('/toggle-pump', { method: 'POST' })
+            .then(r => r.json())
+            .then(data => document.getElementById('pump-status').innerText = data.status)
+            .catch(console.error);
     }
 
-    // Update current time every second
+    function setAutoMode() {
+        fetch('/auto-mode', { method: 'POST' })
+            .then(r => r.json())
+            .then(() => fetchSensors())
+            .catch(console.error);
+    }
+
+    function fetchSensors() {
+        fetch('/sensor-data')
+            .then(r => r.json())
+            .then(data => {
+                document.getElementById('moisture').innerText = data.moisture;
+                document.getElementById('light').innerText    = data.light;
+                document.getElementById('pump-status').innerText = data.pump;
+            })
+            .catch(console.error);
+    }
+
+    // Update clock every second
     setInterval(() => {
-        const now = new Date();
-        document.getElementById('current-time').innerText = now.toLocaleString();
+        document.getElementById('current-time').innerText = new Date().toLocaleString();
     }, 1000);
+
+    // Poll sensor data every 5 seconds
+    fetchSensors();
+    setInterval(fetchSensors, 5000);
 </script>
 </body>
 </html>

@@ -3,4 +3,4 @@ __pycache__/
 *.pyc
 instance/
 .idea/
-.env
+secrets.py
