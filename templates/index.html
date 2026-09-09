@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Irrigation Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/Login.css') }}">
+    <style>
+        /* Body fills screen and centers everything */
+        body {
+            display: flex;
+            justify-content: center; /* horizontal centering */
+            align-items: center;     /* vertical centering */
+            min-height: 100vh;
+            margin: 0;
+            font-family: 'Roboto', sans-serif;
+            background-color: #f4f6f9;
+        }
+
+        /* Container for dashboard */
+        .dashboard-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            width: 90%;
+            max-width: 900px;
+            gap: 20px;
+        }
+
+        .greeting {
+            font-size: 24px;
+            font-weight: 500;
+            margin-bottom: 20px;
+        }
+
+        .grid-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: repeat(3, 100px);
+            gap: 20px;
+            width: 100%;
+        }
+
+        .grid-item {
+            background-color: #fff;
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center; /* center content inside each cell */
+            text-align: center;
+        }
+
+        .grid-item h3 {
+            margin: 0;
+            font-size: 16px;
+            font-weight: 500;
+        }
+
+        .grid-item p {
+            margin: 5px 0 0 0;
+            font-size: 20px;
+            font-weight: 700;
+        }
+
+        .pump-button {
+            margin-top: 30px;
+            padding: 15px 25px;
+            font-size: 18px;
+            background-color: #4a90e2;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        .pump-button:hover {
+            background-color: #357ab7;
+        }
+    </style>
+</head>
+<body>
+<div class="dashboard-container">
+    <!-- Greeting -->
+    <div class="greeting">
+        Hello, {{ username }}!
+    </div>
+
+    <!-- Data Grid -->
+    <div class="grid-container">
+        <div class="grid-item">
+            <h3>Moisture Level</h3>
+            <p id="moisture">45%</p>
+        </div>
+        <div class="grid-item">
+            <h3>Time Since Last Irrigation</h3>
+            <p id="last-irrigation">02:15:30</p>
+        </div>
+        <div class="grid-item">
+            <h3>Temperature</h3>
+            <p id="temperature">23°C</p>
+        </div>
+        <div class="grid-item">
+            <h3>Humidity</h3>
+            <p id="humidity">55%</p>
+        </div>
+        <div class="grid-item">
+            <h3>Water Pump Status</h3>
+            <p id="pump-status">OFF</p>
+        </div>
+        <div class="grid-item">
+            <h3>Current Time & Date</h3>
+            <p id="current-time">{{ current_time }}</p>
+        </div>
+    </div>
+
+    <!-- Manual Pump Control -->
+    <button type="button" class="pump-button" onclick="togglePump()">Turn On Pump</button>
+</div>
+
+<script>
+    // Pump toggle function
+    function togglePump() {
+        fetch('/toggle-pump', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            const status = data.status;
+            document.getElementById('pump-status').innerText = status;
+            document.querySelector('.pump-button').innerText = status === 'ON' ? 'Turn Off Pump' : 'Turn On Pump';
+        })
+        .catch(err => console.error(err));
+    }
+
+    // Update current time every second
+    setInterval(() => {
+        const now = new Date();
+        document.getElementById('current-time').innerText = now.toLocaleString();
+    }, 1000);
+</script>
+</body>
+</html>
