@@ -1,2 +1,0 @@
-SSID = 'your-wifi-name'
-PASSWORD = 'your-wifi-password'
