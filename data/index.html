@@ -127,7 +127,7 @@
             .then(r => r.json())
             .then(data => {
                 document.getElementById('moisture').innerText = data.moisture;
-                document.getElementById('light').innerText    = data.light;
+                document.getElementById('light').innerText = data.lightState;
                 document.getElementById('pump-status').innerText = data.pump;
             })
             .catch(console.error);
