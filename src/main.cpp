@@ -3,36 +3,38 @@
 #include <WebServer.h>
 #include <LittleFS.h>
 
-// ---------------- Config ----------------
+// ================================================================
+//  DEBUG AP MODE
+//  1 = ESP32 creates its own WiFi network (no router needed)
+//  0 = normal mode, connects to your home WiFi below
+// ================================================================
+#define DEBUG_AP_MODE 1
+
+// --- Home WiFi (used when DEBUG_AP_MODE = 0) ---
 const char* ssid     = "NULL";
 const char* password = "NULL";
+
+// --- Debug AP credentials (used when DEBUG_AP_MODE = 1) ---
+const char* ap_ssid     = "ESP32-Irrigation";
+const char* ap_password = "irrigation123";   // min 8 chars, or "" for open
 
 #ifndef LED_BUILTIN
 #define LED_BUILTIN 48
 #endif
 
 // --- Feature switches ---
-// 0 = light sensor disabled, 1 = enabled
 #define ENABLE_LIGHT_SENSOR 1
 
 // --- Pinout ---
-// Board: ESP32-S3
-#define ADC_SOIL_PIN 4      // analog soil moisture
-#define LDR_PIN      6      // DIGITAL LDR module DO pin
+#define ADC_SOIL_PIN 4
+#define LDR_PIN      6
 #define PUMP_PIN     5
 
 // --- Relay polarity ---
-// 0 = active-HIGH relay (HIGH = pump ON)   <-- yours
-// 1 = active-LOW  relay (LOW  = pump ON)
 #define PUMP_ACTIVE_LOW 0
 
 // --- Digital LDR polarity ---
-// 1 = DO goes HIGH when BRIGHT (typical LM393 module)
-// 0 = DO goes LOW  when BRIGHT (some modules are inverted)
 #define LDR_BRIGHT_IS_HIGH 0
-
-// If your module has an open-collector DO output and reads unstable,
-// set this to 1 to enable the internal pull-up on the pin.
 #define LDR_USE_PULLUP 0
 
 // --- Timing ---
@@ -42,7 +44,9 @@ const char* password = "NULL";
 #define PUMP_MAX_ON_TIME         60000UL
 
 // --- Thresholds ---
-#define SOIL_MOISTURE_THRESHOLD  28        // %
+// Test value: set above your current reading to force auto to fire.
+// Set to 28 for "normal" operation.
+#define SOIL_MOISTURE_THRESHOLD  28
 
 WebServer server(80);
 
@@ -57,8 +61,8 @@ unsigned long lastSensorRead = 0;
 unsigned long pumpOnSince    = 0;
 
 int  moistureValue = 0;
-int  lightDigital  = 0;     // raw digital reading 0 or 1
-bool lightIsBright = false; // interpreted state
+int  lightDigital  = 0;
+bool lightIsBright = false;
 
 // ---------------- Pump helpers ----------------
 void setPump(bool on) {
@@ -86,6 +90,25 @@ void stopPump(const char* reason) {
 
 // ---------------- WiFi ----------------
 void connectWiFi() {
+#if DEBUG_AP_MODE
+    WiFi.mode(WIFI_AP);
+    WiFi.setSleep(false);
+
+    bool ok = (strlen(ap_password) >= 8)
+        ? WiFi.softAP(ap_ssid, ap_password)
+        : WiFi.softAP(ap_ssid);
+
+    if (!ok) {
+        Serial.println("AP start FAILED");
+        return;
+    }
+    Serial.println("=== DEBUG AP MODE ===");
+    Serial.printf("SSID    : %s\n", ap_ssid);
+    Serial.printf("Password: %s\n", strlen(ap_password) >= 8 ? ap_password : "(open)");
+    Serial.print ("Open    : http://");
+    Serial.println(WiFi.softAPIP());
+    Serial.println("=====================");
+#else
     WiFi.mode(WIFI_STA);
     WiFi.setSleep(false);
     WiFi.disconnect(true);
@@ -107,7 +130,7 @@ void connectWiFi() {
     Serial.println();
 
     if (WiFi.status() == WL_CONNECTED) {
-        Serial.print("Connected! IP: ");
+        Serial.print("Connected! IP: http://");
         Serial.println(WiFi.localIP());
         return;
     }
@@ -121,6 +144,7 @@ void connectWiFi() {
     }
     Serial.print("ESP32 MAC: ");
     Serial.println(WiFi.macAddress());
+#endif
 }
 
 // ---------------- File serving ----------------
@@ -152,18 +176,18 @@ void handleSensorData() {
     json += "\"moisture\":" + String(moistureValue) + ",";
 
 #if ENABLE_LIGHT_SENSOR
-    // Send 100 or 0 so the dashboard's % display still works unchanged.
-    json += "\"light\":"      + String(lightIsBright ? 100 : 0) + ",";
+    json += "\"light\":"       + String(lightIsBright ? 100 : 0) + ",";
     json += "\"lightState\":\"" + String(lightIsBright ? "BRIGHT" : "DARK") + "\",";
-    json += "\"lightRaw\":"   + String(lightDigital) + ",";
+    json += "\"lightRaw\":"    + String(lightDigital) + ",";
 #else
     json += "\"light\":\"--\",";
     json += "\"lightState\":\"--\",";
     json += "\"lightRaw\":\"--\",";
 #endif
 
-    json += "\"pump\":\""   + String(pumpState ? "ON" : "OFF") + "\",";
-    json += "\"mode\":\""   + String(autoMode  ? "AUTO" : "MANUAL") + "\"";
+    json += "\"pump\":\"" + String(pumpState ? "ON" : "OFF") + "\",";
+    json += "\"mode\":\"" + String(autoMode  ? "AUTO" : "MANUAL") + "\",";
+    json += "\"wifi\":\"" + String(DEBUG_AP_MODE ? "AP" : "STA") + "\"";
     json += "}";
     server.send(200, "application/json", json);
 }
@@ -179,6 +203,8 @@ void handleTogglePump() {
         setPump(true);
     }
 
+    Serial.println("Mode -> MANUAL");
+
     String json = "{\"status\":\"" + String(pumpState ? "ON" : "OFF") +
                   "\",\"mode\":\"MANUAL\"}";
     server.send(200, "application/json", json);
@@ -186,8 +212,14 @@ void handleTogglePump() {
 
 void handleAutoMode() {
     autoMode = true;
-    if (pumpTimed) stopPump("return to auto");
-    lastPumpStop = millis();
+
+    // Stop the pump if it's running (manual OR timed) -- this is the fix
+    if (pumpState) {
+        stopPump("return to auto");
+    }
+
+    Serial.println("Mode -> AUTO");
+
     server.send(200, "application/json", "{\"mode\":\"AUTO\"}");
 }
 
@@ -212,6 +244,42 @@ void readSensors() {
 #endif
 }
 
+// ---------------- Auto decision with reason logging ----------------
+void runAutoDecision() {
+    if (!autoMode) return;   // silent when in manual
+
+    unsigned long now = millis();
+
+    if (pumpState) {
+        // pump already running -- nothing to report, it's fine
+        return;
+    }
+
+    if (lastPumpStop != 0 && (now - lastPumpStop) < PUMP_COOLDOWN) {
+        static unsigned long lastReport = 0;
+        if (now - lastReport >= 5000) {
+            lastReport = now;
+            Serial.printf("Auto: waiting for cooldown (%lus left)\n",
+                          (PUMP_COOLDOWN - (now - lastPumpStop)) / 1000);
+        }
+        return;
+    }
+
+    if (moistureValue >= SOIL_MOISTURE_THRESHOLD) {
+        static unsigned long lastReport = 0;
+        if (now - lastReport >= 5000) {
+            lastReport = now;
+            Serial.printf("Auto: soil OK (%d%% >= %d%%), no water needed\n",
+                          moistureValue, SOIL_MOISTURE_THRESHOLD);
+        }
+        return;
+    }
+
+    Serial.printf("Auto: FIRE (soil %d%% < %d%%)\n",
+                  moistureValue, SOIL_MOISTURE_THRESHOLD);
+    startPumpCycle();
+}
+
 // ---------------- Setup ----------------
 void setup() {
     Serial.begin(115200);
@@ -220,7 +288,6 @@ void setup() {
     pinMode(LED_BUILTIN, OUTPUT);
     pinMode(ADC_SOIL_PIN, INPUT);
     pinMode(PUMP_PIN, OUTPUT);
-
 #if ENABLE_LIGHT_SENSOR
     pinMode(LDR_PIN, LDR_USE_PULLUP ? INPUT_PULLUP : INPUT);
 #endif
@@ -268,12 +335,6 @@ void loop() {
     if (now - lastSensorRead >= SENSOR_READ_INTERVAL) {
         lastSensorRead = now;
         readSensors();
-
-        if (autoMode && !pumpState &&
-            (lastPumpStop == 0 || now - lastPumpStop >= PUMP_COOLDOWN) &&
-            moistureValue < SOIL_MOISTURE_THRESHOLD) {
-            Serial.println("Auto: soil dry -> starting pump");
-            startPumpCycle();
-        }
+        runAutoDecision();
     }
 }
