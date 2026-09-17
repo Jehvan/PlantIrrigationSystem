@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Irrigation Dashboard</title>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
     <style>
@@ -23,6 +24,14 @@
             width: 90%;
             max-width: 900px;
             gap: 20px;
+            padding: 20px 0;
+        }
+
+        h1 {
+            font-size: 22px;
+            font-weight: 500;
+            color: #333;
+            margin: 0 0 10px 0;
         }
 
         .grid-container {
@@ -49,18 +58,22 @@
             margin: 0;
             font-size: 16px;
             font-weight: 500;
+            color: #666;
         }
 
         .grid-item p {
             margin: 5px 0 0 0;
             font-size: 20px;
             font-weight: 700;
+            color: #222;
         }
 
         .button-row {
             display: flex;
             gap: 15px;
             margin-top: 30px;
+            flex-wrap: wrap;
+            justify-content: center;
         }
 
         button {
@@ -71,17 +84,34 @@
             cursor: pointer;
             transition: background-color 0.3s;
             color: white;
+            font-family: 'Roboto', sans-serif;
+            font-weight: 500;
         }
 
-        #pump-btn    { background-color: #4a90e2; }
+        #pump-btn       { background-color: #4a90e2; }
         #pump-btn:hover { background-color: #357ab7; }
 
-        #auto-btn    { background-color: #7cb87c; }
+        #auto-btn       { background-color: #7cb87c; }
         #auto-btn:hover { background-color: #5a9e5a; }
+
+        .status-dot {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 6px;
+            vertical-align: middle;
+        }
+        .dot-on   { background-color: #4caf50; }
+        .dot-off  { background-color: #bbb; }
+        .dot-auto { background-color: #4a90e2; }
+        .dot-man  { background-color: #f0a500; }
     </style>
 </head>
 <body>
 <div class="dashboard-container">
+    <h1>Irrigation Dashboard</h1>
+
     <div class="grid-container">
         <div class="grid-item">
             <h3>Moisture Level</h3>
@@ -96,8 +126,16 @@
             <p id="pump-status">--</p>
         </div>
         <div class="grid-item">
+            <h3>Mode</h3>
+            <p id="mode">--</p>
+        </div>
+        <div class="grid-item">
             <h3>Current Time</h3>
             <p id="current-time">--</p>
+        </div>
+        <div class="grid-item">
+            <h3>WiFi Mode</h3>
+            <p id="wifi-mode">--</p>
         </div>
     </div>
 
@@ -111,7 +149,10 @@
     function togglePump() {
         fetch('/toggle-pump', { method: 'POST' })
             .then(r => r.json())
-            .then(data => document.getElementById('pump-status').innerText = data.status)
+            .then(data => {
+                document.getElementById('pump-status').innerText = data.status;
+                document.getElementById('mode').innerText        = data.mode;
+            })
             .catch(console.error);
     }
 
@@ -126,21 +167,43 @@
         fetch('/sensor-data')
             .then(r => r.json())
             .then(data => {
-                document.getElementById('moisture').innerText = data.moisture;
-                document.getElementById('light').innerText    = data.light;
-                document.getElementById('pump-status').innerText = data.pump;
+                // Moisture
+                document.getElementById('moisture').innerText = data.moisture + '%';
+
+                // Light: prefer the state string if present
+                const lightEl = document.getElementById('light');
+                if (data.lightState && data.lightState !== '--') {
+                    lightEl.innerText = data.lightState;
+                } else {
+                    lightEl.innerText = data.light;
+                }
+
+                // Pump status with colored dot
+                const pumpEl = document.getElementById('pump-status');
+                const pumpOn = data.pump === 'ON';
+                pumpEl.innerHTML = '<span class="status-dot ' +
+                    (pumpOn ? 'dot-on' : 'dot-off') + '"></span>' + data.pump;
+
+                // Mode with colored dot
+                const modeEl = document.getElementById('mode');
+                const isAuto = data.mode === 'AUTO';
+                modeEl.innerHTML = '<span class="status-dot ' +
+                    (isAuto ? 'dot-auto' : 'dot-man') + '"></span>' + data.mode;
+
+                // WiFi mode
+                document.getElementById('wifi-mode').innerText = data.wifi || '--';
             })
             .catch(console.error);
     }
 
     // Update clock every second
     setInterval(() => {
-        document.getElementById('current-time').innerText = new Date().toLocaleString();
+        document.getElementById('current-time').innerText = new Date().toLocaleTimeString();
     }, 1000);
 
-    // Poll sensor data every 5 seconds
+    // Poll sensor data every 2 seconds
     fetchSensors();
-    setInterval(fetchSensors, 5000);
+    setInterval(fetchSensors, 2000);
 </script>
 </body>
 </html>
